@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Video to PNG</title>
+<style>
+:root{--bg:#f6f6f4;--card:#fff;--text:#1c1c1a;--muted:#6b6b66;--accent:#3b5bdb;--border:#dcdcd6;--on:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#212120;--text:#eeeeea;--muted:#9a9a94;--accent:#7c93ff;--border:#37373a;--on:#101010;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#161615;--card:#212120;--text:#eeeeea;--muted:#9a9a94;--accent:#7c93ff;--border:#37373a;--on:#101010;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.5rem;margin:0 0 4px}
+p.sub{color:var(--muted);margin:0 0 20px}
+.drop{display:block;border:2px dashed var(--border);background:var(--card);border-radius:14px;padding:32px 16px;text-align:center;cursor:pointer}
+.drop.over{border-color:var(--accent)}
+.drop input{display:none}
+.drop b{color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:16px 0}
+label.f{display:flex;align-items:center;gap:8px;color:var(--muted)}
+input[type=number]{width:80px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit}
+button,a.btn{background:var(--accent);color:var(--on);border:0;border-radius:10px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+button:disabled{opacity:.5;cursor:default}
+button.sec{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+#status{color:var(--muted);min-height:1.5em}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:16px}
+.cell{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;font-size:.8rem;text-align:center}
+.cell img{width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:6px;background:repeating-conic-gradient(var(--border) 0 25%,transparent 0 50%) 50%/12px 12px;display:block}
+.cell a{display:block;color:var(--accent);margin-top:6px;word-break:break-all;text-decoration:none;font-weight:600}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<h1>Video to PNG</h1>
+<p class="sub">Pick a video or GIF. Works offline. Everything runs in your browser – nothing is uploaded.</p>
+
+<label class="drop" id="drop">
+  <input type="file" id="file" accept="video/*,image/gif,.gif">
+  <b>Choose a file</b> or drop it here
+  <div id="fname" style="color:var(--muted);margin-top:6px"></div>
+</label>
+
+<div class="row" id="vopts" hidden>
+  <label class="f">Frames per second <input type="number" id="fps" min="0.1" max="120" step="any" value="10"></label>
+  <button id="go">Extract frames</button>
+  <span id="hint" style="color:var(--muted);font-size:.85rem"></span>
+</div>
+
+<div class="bar" id="barwrap" hidden><i id="bar"></i></div>
+<div id="status"></div>
+
+<div class="row" id="actions" hidden>
+  <button id="zip">Download all as ZIP</button>
+  <button class="sec" id="clear">Clear</button>
+</div>
+<div class="grid" id="grid"></div>
+</main>
+
+<video id="vid" muted playsinline preload="auto" style="display:none"></video>
+
+<script>
+const $ = id => document.getElementById(id);
+let frames = [], busy = false, srcName = 'frames', videoURL = null, pending = null;
+
+const pad = n => String(n).padStart(4, '0');
+function setStatus(t){ $('status').textContent = t; }
+function setBar(p){ $('barwrap').hidden = p == null; if (p != null) $('bar').style.width = (p*100)+'%'; }
+
+function clearAll(){
+  frames.forEach(f => URL.revokeObjectURL(f.url));
+  frames = []; $('grid').innerHTML = ''; $('actions').hidden = true; setBar(null); setStatus('');
+}
+
+async function addFrame(canvas){
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+  const name = srcName + '_' + pad(frames.length + 1) + '.png';
+  const url = URL.createObjectURL(blob);
+  frames.push({name, blob, url});
+  const c = document.createElement('div'); c.className = 'cell';
+  const img = new Image(); img.src = url; img.loading = 'lazy'; img.alt = name;
+  const a = document.createElement('a'); a.href = url; a.download = name; a.textContent = name;
+  c.append(img, a); $('grid').append(c);
+}
+
+function onFile(file){
+  if (!file || busy) return;
+  clearAll();
+  srcName = file.name.replace(/\.[^.]+$/, '') || 'frames';
+  $('fname').textContent = file.name;
+  pending = file;
+  const isGif = file.type === 'image/gif' || /\.gif$/i.test(file.name);
+  if (isGif){ $('vopts').hidden = true; runGif(file); }
+  else { $('vopts').hidden = false; prepVideo(file); }
+}
+
+/* ---------- GIF (built-in decoder, no libraries) ---------- */
+function lzw(data, minCode, total){
+  const out = new Uint8Array(total); let op = 0;
+  const clear = 1 << minCode, eoi = clear + 1;
+  let size = minCode + 1, next = eoi + 1, mask = (1 << size) - 1;
+  const prefix = new Uint16Array(4096), suffix = new Uint8Array(4096), stack = new Uint8Array(4097);
+  let bits = 0, acc = 0, dp = 0, prev = -1, first = 0;
+  for (let i = 0; i < clear; i++) suffix[i] = i;
+  while (op < total){
+    while (bits < size && dp < data.length){ acc |= data[dp++] << bits; bits += 8; }
+    if (bits < size) break;
+    const code = acc & mask; acc >>= size; bits -= size;
+    if (code === clear){ size = minCode + 1; mask = (1 << size) - 1; next = eoi + 1; prev = -1; continue; }
+    if (code === eoi) break;
+    if (prev === -1){ out[op++] = suffix[code]; prev = code; first = code; continue; }
+    let cur = code, sp = 0;
+    if (code >= next){ stack[sp++] = first; cur = prev; }
+    while (cur >= clear){ stack[sp++] = suffix[cur]; cur = prefix[cur]; }
+    first = suffix[cur]; stack[sp++] = first;
+    while (sp > 0 && op < total) out[op++] = stack[--sp];
+    if (next < 4096){
+      prefix[next] = prev; suffix[next] = first; next++;
+      if (next === (1 << size) && size < 12){ size++; mask = (1 << size) - 1; }
+    }
+    prev = code;
+  }
+  return out;
+}
+
+function decodeGif(buf){
+  const d = new Uint8Array(buf);
+  if (String.fromCharCode(d[0], d[1], d[2]) !== 'GIF') throw new Error('Not a GIF file');
+  let p = 6;
+  const W = d[p] | d[p+1] << 8, H = d[p+2] | d[p+3] << 8, fl = d[p+4]; p += 7;
+  let gct = null;
+  if (fl & 0x80){ const n = 3 << ((fl & 7) + 1); gct = d.subarray(p, p + n); p += n; }
+  const frames = []; let gce = null;
+  while (p < d.length){
+    const b = d[p++];
+    if (b === 0x3b) break;
+    if (b === 0x21){
+      const lab = d[p++];
+      if (lab === 0xf9){ const f = d[p+1]; gce = {disp: (f >> 2) & 7, trans: (f & 1) ? d[p+4] : -1}; }
+      let s = d[p++]; while (s){ p += s; s = d[p++]; }
+    } else if (b === 0x2c){
+      const l = d[p] | d[p+1] << 8, t = d[p+2] | d[p+3] << 8, w = d[p+4] | d[p+5] << 8, h = d[p+6] | d[p+7] << 8, f = d[p+8];
+      p += 9;
+      let ct = gct;
+      if (f & 0x80){ const n = 3 << ((f & 7) + 1); ct = d.subarray(p, p + n); p += n; }
+      const minCode = d[p++], chunks = []; let len = 0, s = d[p++];
+      while (s){ chunks.push(d.subarray(p, p + s)); len += s; p += s; s = d[p++]; }
+      const data = new Uint8Array(len); let o = 0;
+      for (const c of chunks){ data.set(c, o); o += c.length; }
+      let idx = lzw(data, minCode, w * h);
+      if (f & 0x40){
+        const out = new Uint8Array(idx.length); let r = 0;
+        for (const [st, step] of [[0,8],[4,8],[2,4],[1,2]])
+          for (let y = st; y < h; y += step){ out.set(idx.subarray(r*w, (r+1)*w), y*w); r++; }
+        idx = out;
+      }
+      frames.push({l, t, w, h, idx, ct, disp: gce ? gce.disp : 0, trans: gce ? gce.trans : -1});
+      gce = null;
+    }
+  }
+  return {W, H, frames};
+}
+
+async function runGif(file){
+  busy = true;
+  try{
+    setStatus('Decoding GIF…');
+    const {W, H, frames: list} = decodeGif(await file.arrayBuffer());
+    if (!list.length) throw new Error('No frames found');
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    const tmp = document.createElement('canvas'), tctx = tmp.getContext('2d');
+    let last = null, saved = null;
+    for (let i = 0; i < list.length; i++){
+      const f = list[i];
+      if (last){
+        if (last.disp === 2) ctx.clearRect(last.l, last.t, last.w, last.h);
+        else if (last.disp === 3 && saved) ctx.putImageData(saved, 0, 0);
+      }
+      if (f.disp === 3) saved = ctx.getImageData(0, 0, W, H);
+      const px = new Uint8ClampedArray(f.w * f.h * 4), ct = f.ct || new Uint8Array(768);
+      for (let k = 0, n = f.idx.length; k < n; k++){
+        const c = f.idx[k];
+        if (c === f.trans) continue;
+        px[k*4] = ct[c*3]; px[k*4+1] = ct[c*3+1]; px[k*4+2] = ct[c*3+2]; px[k*4+3] = 255;
+      }
+      tmp.width = f.w; tmp.height = f.h;
+      tctx.putImageData(new ImageData(px, f.w, f.h), 0, 0);
+      ctx.drawImage(tmp, f.l, f.t);
+      await addFrame(cv);
+      last = f;
+      setBar((i+1)/list.length); setStatus('Frame ' + (i+1) + ' of ' + list.length);
+      if (i % 5 === 0) await new Promise(r => setTimeout(r));
+    }
+    done();
+  }catch(e){ setStatus('Could not decode this GIF: ' + e.message); }
+  busy = false;
+}
+
+/* ---------- Video ---------- */
+const vid = $('vid');
+const once = (el, ev) => new Promise((res, rej) => {
+  const ok = () => { el.removeEventListener('error', bad); res(); };
+  const bad = () => { el.removeEventListener(ev, ok); rej(new Error('Video could not be read')); };
+  el.addEventListener(ev, ok, {once:true}); el.addEventListener('error', bad, {once:true});
+});
+
+async function prepVideo(file){
+  if (videoURL) URL.revokeObjectURL(videoURL);
+  videoURL = URL.createObjectURL(file);
+  vid.src = videoURL; $('hint').textContent = '';
+  try{
+    await once(vid, 'loadedmetadata');
+    $('hint').textContent = vid.videoWidth + '×' + vid.videoHeight + ', ' + vid.duration.toFixed(1) + 's';
+    detectFps();
+  }catch(e){ setStatus(e.message); }
+}
+
+async function detectFps(){
+  if (!('requestVideoFrameCallback' in vid)) return;
+  try{
+    const times = [];
+    await new Promise(res => {
+      const t = setTimeout(res, 2000);
+      const cb = (now, m) => {
+        times.push(m.mediaTime);
+        if (times.length >= 15){ clearTimeout(t); res(); } else vid.requestVideoFrameCallback(cb);
+      };
+      vid.requestVideoFrameCallback(cb);
+      vid.play().catch(() => { clearTimeout(t); res(); });
+    });
+    vid.pause();
+    let min = Infinity;
+    for (let i = 1; i < times.length; i++){ const d = times[i] - times[i-1]; if (d > 0.002) min = Math.min(min, d); }
+    if (isFinite(min)){
+      const fps = Math.round(1 / min * 100) / 100;
+      if (fps >= 1 && fps <= 120){ $('fps').value = fps; $('hint').textContent += ' · detected ~' + fps + ' fps'; }
+    }
+    vid.currentTime = 0;
+  }catch(e){}
+}
+
+async function runVideo(){
+  if (busy) return;
+  busy = true; $('go').disabled = true; clearAll();
+  try{
+    vid.pause();
+    const fps = Math.max(0.1, parseFloat($('fps').value) || 10);
+    const dur = vid.duration, n = Math.max(1, Math.floor(dur * fps));
+    if (n > 600 && !confirm('This will create ' + n + ' PNGs and may be slow or run out of memory on phones. Continue?')){ busy = false; $('go').disabled = false; return; }
+    const cv = document.createElement('canvas'); cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+    const ctx = cv.getContext('2d');
+    for (let i = 0; i < n; i++){
+      const t = Math.min(i / fps + 0.0005, dur - 0.001);
+      vid.currentTime = Math.max(0, t);
+      await once(vid, 'seeked');
+      ctx.drawImage(vid, 0, 0, cv.width, cv.height);
+      await addFrame(cv);
+      setBar((i+1)/n); setStatus('Frame ' + (i+1) + ' of ' + n);
+    }
+    done();
+  }catch(e){ setStatus('Error: ' + e.message); }
+  busy = false; $('go').disabled = false;
+}
+
+function done(){
+  setBar(null);
+  setStatus(frames.length + ' frames ready. Tap a name to save one, or download everything as a ZIP.');
+  $('actions').hidden = !frames.length;
+}
+
+/* ---------- ZIP (built-in, stored/uncompressed) ---------- */
+const CRC = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+function crc32(b){ let c = -1; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; }
+
+async function makeZip(list, onp){
+  const enc = new TextEncoder(), dt = new Date(), parts = [], cen = [];
+  const time = (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >> 1);
+  const date = ((dt.getFullYear() - 1980) << 9) | ((dt.getMonth() + 1) << 5) | dt.getDate();
+  let off = 0, cenSize = 0;
+  for (let i = 0; i < list.length; i++){
+    const f = list[i], nm = enc.encode(f.name), sz = f.blob.size;
+    const crc = crc32(new Uint8Array(await f.blob.arrayBuffer()));
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
+    parts.push(lh.buffer, nm, f.blob);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, off, true);
+    cen.push(ch.buffer, nm);
+    off += 30 + nm.length + sz; cenSize += 46 + nm.length;
+    onp((i + 1) / list.length);
+    if (i % 20 === 0) await new Promise(r => setTimeout(r));
+  }
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, list.length, true); end.setUint16(10, list.length, true);
+  end.setUint32(12, cenSize, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...cen, end.buffer], {type: 'application/zip'});
+}
+
+$('zip').onclick = async () => {
+  if (!frames.length || busy) return;
+  busy = true; $('zip').disabled = true;
+  try{
+    setStatus('Building ZIP…');
+    const blob = await makeZip(frames, setBar);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = srcName + '_frames.zip';
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    setBar(null); setStatus('ZIP ready.');
+  }catch(e){ setStatus('ZIP failed: ' + e.message); }
+  busy = false; $('zip').disabled = false;
+};
+
+$('go').onclick = runVideo;
+$('clear').onclick = clearAll;
+$('file').onchange = e => { onFile(e.target.files[0]); e.target.value = ''; };
+const drop = $('drop');
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => onFile(e.dataTransfer.files[0]));
+</script>
+</body>
+</html>
