@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
+
   <title>JSON Text Extractor</title>
 
   <style>
@@ -13,50 +15,84 @@
 
     body {
       margin: 0;
-      padding: 30px 15px;
+      min-height: 100vh;
+      padding: 24px 16px;
       background: #111827;
       color: #f9fafb;
-      font-family: Arial, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
     }
 
     .container {
-      max-width: 750px;
-      margin: 40px auto;
-      padding: 30px;
+      width: 100%;
+      max-width: 800px;
+      margin: 30px auto;
+      padding: 28px;
       background: #1f2937;
-      border-radius: 12px;
+      border: 1px solid #374151;
+      border-radius: 16px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
     }
 
     h1 {
+      margin: 0 0 10px;
       text-align: center;
-      margin-bottom: 10px;
+      font-size: clamp(24px, 5vw, 32px);
     }
 
-    p {
+    .description {
+      margin: 0 0 25px;
       color: #9ca3af;
       text-align: center;
-      line-height: 1.5;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .section-label {
+      display: block;
+      margin: 20px 0 8px;
+      color: #d1d5db;
+      font-size: 14px;
+      font-weight: 600;
     }
 
     input[type="file"] {
+      display: block;
       width: 100%;
-      margin: 25px 0;
-      padding: 15px;
-      background: #374151;
+      padding: 14px;
+      background: #111827;
       border: 1px solid #4b5563;
-      border-radius: 8px;
+      border-radius: 10px;
+      color: #d1d5db;
+      font-size: 14px;
+    }
+
+    input[type="file"]::file-selector-button {
+      margin-right: 12px;
+      padding: 9px 12px;
+      background: #374151;
+      border: none;
+      border-radius: 6px;
       color: white;
+      cursor: pointer;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 18px;
     }
 
     button {
-      width: 100%;
-      padding: 14px;
-      margin: 8px 0;
+      flex: 1;
+      min-width: 0;
+      padding: 14px 16px;
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: bold;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: 700;
       cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
     }
 
     #extractBtn {
@@ -64,77 +100,148 @@
       color: white;
     }
 
+    #extractBtn:hover:not(:disabled) {
+      background: #1d4ed8;
+    }
+
     #downloadBtn {
       background: #059669;
       color: white;
     }
 
+    #downloadBtn:hover:not(:disabled) {
+      background: #047857;
+    }
+
     button:disabled {
-      background: #4b5563;
+      opacity: 0.4;
       cursor: not-allowed;
-      opacity: 0.6;
     }
 
     textarea {
+      display: block;
       width: 100%;
-      height: 350px;
-      margin-top: 15px;
-      padding: 15px;
+      min-height: 350px;
+      margin-top: 10px;
+      padding: 16px;
       resize: vertical;
       background: #111827;
       color: #e5e7eb;
       border: 1px solid #4b5563;
-      border-radius: 8px;
-      font-family: monospace;
+      border-radius: 10px;
+      font-family: "Courier New", monospace;
       font-size: 14px;
-      line-height: 1.6;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    textarea:focus,
+    input:focus {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
     }
 
     #status {
+      min-height: 24px;
       margin-top: 15px;
       text-align: center;
       color: #34d399;
+      font-size: 14px;
     }
 
-    .error {
-      color: #f87171 !important;
+    #status.error {
+      color: #f87171;
+    }
+
+    .footer {
+      margin-top: 20px;
+      color: #6b7280;
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 12px;
+      }
+
+      .container {
+        margin: 10px auto;
+        padding: 20px 16px;
+        border-radius: 12px;
+      }
+
+      .buttons {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      textarea {
+        min-height: 280px;
+        font-size: 13px;
+      }
+
+      input[type="file"] {
+        font-size: 12px;
+      }
     }
   </style>
 </head>
 
 <body>
 
-  <div class="container">
+  <main class="container">
 
     <h1>JSON Text Extractor</h1>
 
-    <p>
-      Upload your JSON file to extract only
-      Key, Comment, and Content.
+    <p class="description">
+      Extract Key, Comment, and Content from your JSON file.
+      Preview the text and download it as a TXT file.
     </p>
+
+    <label class="section-label" for="fileInput">
+      Select JSON file
+    </label>
 
     <input
       type="file"
       id="fileInput"
-      accept=".json,application/json,.txt,text/plain"
+      accept=".json,.txt,application/json,text/plain"
     >
 
-    <button id="extractBtn">
-      Extract Text
-    </button>
+    <div class="buttons">
+      <button id="extractBtn">
+        Extract Text
+      </button>
 
-    <button id="downloadBtn" disabled>
-      Download TXT
-    </button>
+      <button id="downloadBtn" disabled>
+        Download TXT
+      </button>
+    </div>
+
+    <label class="section-label" for="output">
+      Extracted text preview
+    </label>
 
     <textarea
       id="output"
-      placeholder="Extracted text will appear here..."
+      placeholder="Your extracted text will appear here..."
+      spellcheck="false"
     ></textarea>
 
-    <div id="status"></div>
+    <div id="status" role="status" aria-live="polite"></div>
 
-  </div>
+    <div class="footer">
+      Your file is processed locally in your browser.
+      No data is uploaded to a server.
+    </div>
+
+  </main>
 
   <script>
     const fileInput = document.getElementById("fileInput");
@@ -158,7 +265,6 @@
       reader.onload = function (event) {
         try {
           const json = JSON.parse(event.target.result);
-
           const entries = json.entries;
 
           if (
@@ -167,7 +273,7 @@
             Array.isArray(entries)
           ) {
             throw new Error(
-              "Could not find the entries object in the JSON file."
+              'Could not find the "entries" object in the JSON file.'
             );
           }
 
@@ -178,50 +284,54 @@
               return;
             }
 
-            if (
-              typeof entry.key === "string" &&
-              entry.key.trim()
-            ) {
-              results.push(entry.key.trim());
+            // Key may be an array, such as ["Aberto"]
+            let key = "";
+
+            if (Array.isArray(entry.key)) {
+              key = entry.key.join(", ");
+            } else if (typeof entry.key === "string") {
+              key = entry.key;
             }
 
-            if (
-              typeof entry.comment === "string" &&
-              entry.comment.trim()
-            ) {
-              results.push(entry.comment.trim());
-            }
+            const comment =
+              typeof entry.comment === "string"
+                ? entry.comment
+                : "";
 
-            if (
-              typeof entry.content === "string" &&
-              entry.content.trim()
-            ) {
-              results.push(entry.content.trim());
-            }
+            const content =
+              typeof entry.content === "string"
+                ? entry.content
+                : "";
+
+            // Three lines per entry, then one blank line.
+            results.push(
+              [key, comment, content].join("\n")
+            );
           });
 
-          extractedText = results.join("\n\n");
+          extractedText = results.join("\n\n").trim();
 
           output.value = extractedText;
 
-          downloadBtn.disabled = results.length === 0;
+          downloadBtn.disabled = !extractedText;
 
           status.classList.remove("error");
           status.textContent =
             "Successfully extracted " +
             results.length +
-            " text values!";
+            " entries!";
 
         } catch (error) {
           extractedText = "";
           output.value = "";
           downloadBtn.disabled = true;
-          showError("Error: " + error.message);
+
+          showError(error.message);
         }
       };
 
       reader.onerror = function () {
-        showError("Could not read the selected file.");
+        showError("Unable to read the selected file.");
       };
 
       reader.readAsText(file);
@@ -250,7 +360,7 @@
 
     function showError(message) {
       status.classList.add("error");
-      status.textContent = message;
+      status.textContent = "Error: " + message;
     }
   </script>
 
