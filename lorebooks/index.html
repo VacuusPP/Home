@@ -2,112 +2,257 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JSON Comment & Content Extractor</title>
-<style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSON Text Extractor</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-        font-family: Arial, sans-serif;
-        background: #f4f4f4;
-        padding: 40px;
-        max-width: 700px;
-        margin: auto;
+      margin: 0;
+      padding: 30px 15px;
+      background: #111827;
+      color: #f9fafb;
+      font-family: Arial, sans-serif;
     }
+
     .container {
-        background: white;
-        padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 2px 10px #0001;
+      max-width: 750px;
+      margin: 40px auto;
+      padding: 30px;
+      background: #1f2937;
+      border-radius: 12px;
     }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    p {
+      color: #9ca3af;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      margin: 25px 0;
+      padding: 15px;
+      background: #374151;
+      border: 1px solid #4b5563;
+      border-radius: 8px;
+      color: white;
+    }
+
     button {
-        padding: 12px 20px;
-        margin-top: 15px;
-        background: #2563eb;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
     }
+
+    #extractBtn {
+      background: #2563eb;
+      color: white;
+    }
+
+    #downloadBtn {
+      background: #059669;
+      color: white;
+    }
+
     button:disabled {
-        background: #999;
-        cursor: not-allowed;
+      background: #4b5563;
+      cursor: not-allowed;
+      opacity: 0.6;
     }
+
     textarea {
-        width: 100%;
-        height: 200px;
-        margin-top: 15px;
-        box-sizing: border-box;
+      width: 100%;
+      height: 350px;
+      margin-top: 15px;
+      padding: 15px;
+      resize: vertical;
+      background: #111827;
+      color: #e5e7eb;
+      border: 1px solid #4b5563;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      line-height: 1.6;
     }
+
     #status {
-        margin-top: 15px;
-        color: #333;
+      margin-top: 15px;
+      text-align: center;
+      color: #34d399;
     }
-</style>
+
+    .error {
+      color: #f87171 !important;
+    }
+  </style>
 </head>
+
 <body>
 
-<div class="container">
-    <h2>JSON Extractor</h2>
-    <p>Upload a JSON file to extract comments and content.</p>
+  <div class="container">
 
-    <input type="file" id="fileInput" accept=".json">
+    <h1>JSON Text Extractor</h1>
 
-    <br>
-    <button onclick="extractJSON()">Extract & Download TXT</button>
+    <p>
+      Upload your JSON file to extract only
+      Key, Comment, and Content.
+    </p>
 
-    <p id="status"></p>
+    <input
+      type="file"
+      id="fileInput"
+      accept=".json,application/json,.txt,text/plain"
+    >
 
-    <textarea id="preview" placeholder="Extracted text will appear here..." readonly></textarea>
-</div>
+    <button id="extractBtn">
+      Extract Text
+    </button>
 
-<script>
-async function extractJSON() {
-    const file = document.getElementById("fileInput").files[0];
+    <button id="downloadBtn" disabled>
+      Download TXT
+    </button>
+
+    <textarea
+      id="output"
+      placeholder="Extracted text will appear here..."
+    ></textarea>
+
+    <div id="status"></div>
+
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const extractBtn = document.getElementById("extractBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const output = document.getElementById("output");
     const status = document.getElementById("status");
-    const preview = document.getElementById("preview");
 
-    if (!file) {
-        status.textContent = "Please select a JSON file.";
+    let extractedText = "";
+
+    extractBtn.addEventListener("click", function () {
+      const file = fileInput.files[0];
+
+      if (!file) {
+        showError("Please select a JSON file first.");
         return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = function (event) {
+        try {
+          const json = JSON.parse(event.target.result);
+
+          const entries = json.entries;
+
+          if (
+            !entries ||
+            typeof entries !== "object" ||
+            Array.isArray(entries)
+          ) {
+            throw new Error(
+              "Could not find the entries object in the JSON file."
+            );
+          }
+
+          const results = [];
+
+          Object.values(entries).forEach(entry => {
+            if (!entry || typeof entry !== "object") {
+              return;
+            }
+
+            if (
+              typeof entry.key === "string" &&
+              entry.key.trim()
+            ) {
+              results.push(entry.key.trim());
+            }
+
+            if (
+              typeof entry.comment === "string" &&
+              entry.comment.trim()
+            ) {
+              results.push(entry.comment.trim());
+            }
+
+            if (
+              typeof entry.content === "string" &&
+              entry.content.trim()
+            ) {
+              results.push(entry.content.trim());
+            }
+          });
+
+          extractedText = results.join("\n\n");
+
+          output.value = extractedText;
+
+          downloadBtn.disabled = results.length === 0;
+
+          status.classList.remove("error");
+          status.textContent =
+            "Successfully extracted " +
+            results.length +
+            " text values!";
+
+        } catch (error) {
+          extractedText = "";
+          output.value = "";
+          downloadBtn.disabled = true;
+          showError("Error: " + error.message);
+        }
+      };
+
+      reader.onerror = function () {
+        showError("Could not read the selected file.");
+      };
+
+      reader.readAsText(file);
+    });
+
+    downloadBtn.addEventListener("click", function () {
+      if (!extractedText) return;
+
+      const blob = new Blob(
+        [extractedText],
+        { type: "text/plain;charset=utf-8" }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "extracted_text.txt";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    });
+
+    function showError(message) {
+      status.classList.add("error");
+      status.textContent = message;
     }
-
-    try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-
-        // Support either an array or a single object
-        const entries = Array.isArray(data) ? data : [data];
-
-        const output = entries.map(entry => {
-            const comment = entry.comment ?? "";
-            const content = entry.content ?? "";
-
-            return `Comment: ${comment}\nContent: ${content}`;
-        }).join("\n\n");
-
-        preview.value = output;
-
-        const blob = new Blob([output], {
-            type: "text/plain;charset=utf-8"
-        });
-
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = file.name.replace(/\.json$/i, "") + ".txt";
-        link.click();
-
-        URL.revokeObjectURL(url);
-
-        status.textContent =
-            `Successfully extracted ${entries.length} entries!`;
-
-    } catch (error) {
-        status.textContent = "Error: Invalid JSON file or structure.";
-    }
-}
-</script>
+  </script>
 
 </body>
 </html>
